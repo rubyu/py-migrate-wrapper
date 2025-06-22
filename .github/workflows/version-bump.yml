@@ -1,18 +1,16 @@
 name: Version Bump
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
     branches: [ main ]
-    paths:
-      - 'src/**'
-      - 'tests/**'
-      - 'pyproject.toml'
-      - '!**/*.md'
 
 jobs:
   version-bump:
     runs-on: ubuntu-latest
-    if: "!contains(github.event.head_commit.message, 'bump version') && !contains(github.event.head_commit.message, '[skip-version]')"
+    if: ${{ github.event.workflow_run.conclusion == 'success' && !contains(github.event.workflow_run.head_commit.message, 'bump version') && !contains(github.event.workflow_run.head_commit.message, '[skip-version]') }}
     
     steps:
     - uses: actions/checkout@v4
@@ -40,9 +38,10 @@ jobs:
     - name: Determine version bump type
       id: bump_type
       run: |
-        if [[ "${{ github.event.head_commit.message }}" == *"BREAKING CHANGE"* ]] || [[ "${{ github.event.head_commit.message }}" == *"major"* ]]; then
+        COMMIT_MESSAGE="${{ github.event.workflow_run.head_commit.message }}"
+        if [[ "$COMMIT_MESSAGE" == *"BREAKING CHANGE"* ]] || [[ "$COMMIT_MESSAGE" == *"major"* ]]; then
           echo "type=major" >> $GITHUB_OUTPUT
-        elif [[ "${{ github.event.head_commit.message }}" == *"feat"* ]] || [[ "${{ github.event.head_commit.message }}" == *"minor"* ]]; then
+        elif [[ "$COMMIT_MESSAGE" == *"feat"* ]] || [[ "$COMMIT_MESSAGE" == *"minor"* ]]; then
           echo "type=minor" >> $GITHUB_OUTPUT
         else
           echo "type=patch" >> $GITHUB_OUTPUT
