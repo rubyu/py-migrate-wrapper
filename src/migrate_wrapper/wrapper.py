@@ -204,7 +204,6 @@ class MigrateWrapper:
             output = (result.stdout or "").strip()
             if not output and result.stderr:
                 output = result.stderr.strip()
-            
             if output:
                 # Parse version from output
                 # Expected formats:
@@ -234,7 +233,6 @@ class MigrateWrapper:
             output = (result.stdout or "").strip()
             if not output and result.stderr:
                 output = result.stderr.strip()
-            
             if output:
                 # Extract version
                 match = re.search(r"\b(\d+)\b", output)

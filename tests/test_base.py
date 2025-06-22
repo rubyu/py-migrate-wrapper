@@ -477,15 +477,13 @@ class MigrateWrapperTestMixin:
 
     @patch("migrate_wrapper.command.subprocess.run")
     def test_version_handles_stderr_output(self, mock_run):
-        """Test version() correctly parses version from stderr (Issue: version stderr bug)"""
+        """Test version() correctly parses version from stderr"""
         mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout="",  # Empty stdout
-            stderr="1\n"  # Version in stderr
+            returncode=0, stdout="", stderr="1\n"  # Empty stdout  # Version in stderr
         )
 
         version = self.wrapper.version()
-        
+
         self.assertEqual(version, 1)
 
     @patch("migrate_wrapper.command.subprocess.run")
@@ -494,24 +492,20 @@ class MigrateWrapperTestMixin:
         mock_run.return_value = MagicMock(
             returncode=0,
             stdout="2\n",  # Version in stdout
-            stderr="1\n"   # Different version in stderr
+            stderr="1\n",  # Different version in stderr
         )
 
         version = self.wrapper.version()
-        
+
         self.assertEqual(version, 2)
 
     @patch("migrate_wrapper.command.subprocess.run")
     def test_version_handles_dirty_state_in_stderr(self, mock_run):
-        """Test version() correctly handles dirty state marker when version is in stderr"""
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout="",
-            stderr="3 (dirty)\n"
-        )
+        """Test version() handles dirty state marker in stderr"""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="3 (dirty)\n")
 
         version = self.wrapper.version()
-        
+
         self.assertEqual(version, 3)
 
     @patch("migrate_wrapper.command.subprocess.run")
@@ -527,13 +521,11 @@ class MigrateWrapperTestMixin:
         for stderr_output, expected_version in test_cases:
             with self.subTest(stderr_output=stderr_output):
                 mock_run.return_value = MagicMock(
-                    returncode=0,
-                    stdout="",
-                    stderr=stderr_output
+                    returncode=0, stdout="", stderr=stderr_output
                 )
 
                 version = self.wrapper.version()
-                
+
                 self.assertEqual(version, expected_version)
 
     # Status command tests
@@ -578,14 +570,10 @@ class MigrateWrapperTestMixin:
     @patch("migrate_wrapper.command.subprocess.run")
     def test_status_handles_stderr_output(self, mock_run):
         """Test status() method also correctly handles stderr output"""
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout="",
-            stderr="5 (dirty)\n"
-        )
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="5 (dirty)\n")
 
         status = self.wrapper.status()
-        
+
         self.assertEqual(status.version, 5)
         self.assertTrue(status.dirty)
         self.assertFalse(status.is_clean)
