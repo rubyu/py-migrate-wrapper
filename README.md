@@ -112,7 +112,6 @@ All databases supported by [golang-migrate/migrate](https://github.com/golang-mi
 config = MigrateConfig(
     database_url="postgres://user:pass@localhost/dbname",  # Required
     migrations_path="./migrations",                        # Required
-    table_name="schema_migrations",                       # Optional (default)
     command_path="migrate"                                # Optional (default)
 )
 ```
