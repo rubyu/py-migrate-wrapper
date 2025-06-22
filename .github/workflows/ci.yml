@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install rye
+      uses: eifinger/setup-rye@v4
+      with:
+        enable-cache: true
+
+    - name: Sync dependencies
+      run: rye sync
+
+    - name: Setup migrate CLI
+      run: make setup-migrate
+
+    - name: Setup PGlite
+      run: make setup-pglite
+
+    - name: Run tests
+      run: rye test
+
+    - name: Upload coverage reports to Codecov
+      if: matrix.python-version == '3.12'
+      uses: codecov/codecov-action@v4
+      with:
+        fail_ci_if_error: true
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install rye
+      uses: eifinger/setup-rye@v4
+      with:
+        enable-cache: true
+
+    - name: Sync dependencies
+      run: rye sync
+
+    - name: Run linter
+      run: rye run flake8 src tests
+
+    - name: Check formatting
+      run: rye run black --check src tests

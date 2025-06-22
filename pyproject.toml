@@ -28,8 +28,10 @@ dependencies = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/yourusername/migrate-wrapper"
-"Bug Tracker" = "https://github.com/yourusername/migrate-wrapper/issues"
+"Homepage" = "https://github.com/rubyu/py-migrate-wrapper"
+"Bug Tracker" = "https://github.com/rubyu/py-migrate-wrapper/issues"
+"Repository" = "https://github.com/rubyu/py-migrate-wrapper"
+"Documentation" = "https://github.com/rubyu/py-migrate-wrapper#readme"
 
 [tool.rye]
 managed = true
@@ -42,10 +44,29 @@ dev-dependencies = [
     "mypy>=1.0.0",
     "pytest-asyncio>=1.0.0",
     "pytest-xdist>=3.5.0",
+    "twine>=5.0.0",
+    "build>=1.0.0",
     # Database drivers for testing only
     "psycopg>=3.2.9",
     "psycopg-binary>=3.2.9",
     "psycopg-pool>=3.2.6",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/migrate_wrapper"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/README.md",
+    "/pyproject.toml",
+    "/Makefile",
+]
+exclude = [
+    "/.github",
+    "/bin",
+    "/pglite-server/node_modules",
 ]
 
 [tool.pytest.ini_options]

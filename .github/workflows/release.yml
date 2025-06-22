@@ -1,0 +1,113 @@
+name: Release
+
+on:
+  push:
+    branches: [ main ]
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+    branches: [ main ]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'push' }}
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Install rye
+      uses: eifinger/setup-rye@v4
+      with:
+        enable-cache: true
+
+    - name: Sync dependencies
+      run: rye sync
+
+    - name: Setup migrate CLI
+      run: make setup-migrate
+
+    - name: Setup PGlite
+      run: make setup-pglite
+
+    - name: Run tests
+      run: rye test
+
+    - name: Get version from pyproject.toml
+      id: get_version
+      run: |
+        VERSION=$(rye version)
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Current version: $VERSION"
+
+    - name: Check if tag exists
+      id: check_tag
+      run: |
+        if git rev-parse "v${{ steps.get_version.outputs.version }}" >/dev/null 2>&1; then
+          echo "exists=true" >> $GITHUB_OUTPUT
+        else
+          echo "exists=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Build package
+      if: steps.check_tag.outputs.exists == 'false'
+      run: rye build
+
+    - name: Create GitHub Release
+      if: steps.check_tag.outputs.exists == 'false'
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v${{ steps.get_version.outputs.version }}
+        release_name: Release v${{ steps.get_version.outputs.version }}
+        body: |
+          ## Changes in v${{ steps.get_version.outputs.version }}
+          
+          Auto-generated release from main branch.
+          
+          ### Installation
+          ```bash
+          pip install migrate-wrapper==${{ steps.get_version.outputs.version }}
+          ```
+          
+          ### What's Changed
+          - See commit history for detailed changes
+          
+          **Full Changelog**: https://github.com/${{ github.repository }}/commits/v${{ steps.get_version.outputs.version }}
+        draft: false
+        prerelease: false
+
+    - name: Upload wheel to release
+      if: steps.check_tag.outputs.exists == 'false'
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./dist/migrate_wrapper-${{ steps.get_version.outputs.version }}-py3-none-any.whl
+        asset_name: migrate_wrapper-${{ steps.get_version.outputs.version }}-py3-none-any.whl
+        asset_content_type: application/zip
+
+    - name: Upload source distribution to release
+      if: steps.check_tag.outputs.exists == 'false'
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./dist/migrate_wrapper-${{ steps.get_version.outputs.version }}.tar.gz
+        asset_name: migrate_wrapper-${{ steps.get_version.outputs.version }}.tar.gz
+        asset_content_type: application/gzip
+
+    - name: Publish to PyPI
+      if: steps.check_tag.outputs.exists == 'false'
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+      run: |
+        rye run pip install twine
+        rye run twine upload dist/*

@@ -1,0 +1,88 @@
+name: Version Bump
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - '!**/*.md'
+
+jobs:
+  version-bump:
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, 'bump version') && !contains(github.event.head_commit.message, '[skip-version]')"
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+
+    - name: Install rye
+      uses: eifinger/setup-rye@v4
+      with:
+        enable-cache: true
+
+    - name: Configure git
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+
+    - name: Get current version
+      id: current_version
+      run: |
+        VERSION=$(rye version)
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Current version: $VERSION"
+
+    - name: Determine version bump type
+      id: bump_type
+      run: |
+        if [[ "${{ github.event.head_commit.message }}" == *"BREAKING CHANGE"* ]] || [[ "${{ github.event.head_commit.message }}" == *"major"* ]]; then
+          echo "type=major" >> $GITHUB_OUTPUT
+        elif [[ "${{ github.event.head_commit.message }}" == *"feat"* ]] || [[ "${{ github.event.head_commit.message }}" == *"minor"* ]]; then
+          echo "type=minor" >> $GITHUB_OUTPUT
+        else
+          echo "type=patch" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Bump version
+      id: bump_version
+      run: |
+        CURRENT_VERSION="${{ steps.current_version.outputs.version }}"
+        BUMP_TYPE="${{ steps.bump_type.outputs.type }}"
+        
+        IFS='.' read -ra VERSION_PARTS <<< "$CURRENT_VERSION"
+        MAJOR=${VERSION_PARTS[0]}
+        MINOR=${VERSION_PARTS[1]}
+        PATCH=${VERSION_PARTS[2]}
+        
+        case $BUMP_TYPE in
+          major)
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+            ;;
+          minor)
+            MINOR=$((MINOR + 1))
+            PATCH=0
+            ;;
+          patch)
+            PATCH=$((PATCH + 1))
+            ;;
+        esac
+        
+        NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+        echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+        echo "New version: $NEW_VERSION"
+        
+        # Update version in pyproject.toml
+        sed -i "s/version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" pyproject.toml
+
+    - name: Commit version bump
+      run: |
+        git add pyproject.toml
+        git commit -m "bump version to ${{ steps.bump_version.outputs.new_version }} [skip-version]"
+        git push

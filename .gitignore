@@ -75,6 +75,10 @@ bin/migrate
 claude.md
 bug-report-*.md
 
+# Build artifacts
+*.whl
+*.tar.gz
+
 # Dependencies
 node_modules/
 package-lock.json
