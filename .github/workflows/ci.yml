@@ -31,17 +31,7 @@ jobs:
       run: make setup-pglite
 
     - name: Run tests with coverage
-      run: rye run pytest tests/ --cov=src/migrate_wrapper --cov-report=xml --cov-report=html
-
-    - name: Upload coverage reports to Codecov
-      if: matrix.python-version == '3.12' && github.repository == 'rubyu/py-migrate-wrapper'
-      uses: codecov/codecov-action@v4
-      with:
-        file: ./coverage.xml
-        fail_ci_if_error: false
-        verbose: true
-        token: ${{ secrets.CODECOV_TOKEN }}
-      continue-on-error: true
+      run: rye run pytest tests/ --cov=src/migrate_wrapper --cov-report=term-missing --cov-report=html
 
   lint:
     runs-on: ubuntu-latest
