@@ -44,7 +44,6 @@ dev-dependencies = [
     "mypy>=1.0.0",
     "pytest-asyncio>=1.0.0",
     "pytest-xdist>=3.5.0",
-    "twine>=5.0.0",
     "build>=1.0.0",
     # Database drivers for testing only
     "psycopg>=3.2.9",

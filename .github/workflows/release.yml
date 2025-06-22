@@ -69,9 +69,7 @@ jobs:
           Auto-generated release from main branch.
           
           ### Installation
-          ```bash
-          pip install migrate-wrapper==${{ steps.get_version.outputs.version }}
-          ```
+          Download the wheel or source from the release assets, or clone the repository.
           
           ### What's Changed
           - See commit history for detailed changes
@@ -85,11 +83,3 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Publish to PyPI
-      if: steps.check_tag.outputs.exists == 'false'
-      env:
-        TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-      run: |
-        rye run pip install twine
-        rye run twine upload dist/*
