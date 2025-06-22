@@ -198,19 +198,22 @@ class MigrateWrapper:
 
         result = self.command.execute(args)
 
-        if result.returncode == 0 and result.stdout:
-            # Parse version from output
-            # Expected formats:
-            # - "1" (just version number)
-            # - "version: 1"
-            # - "1 (dirty)"
-            # - "version: 1 (dirty)"
-            output = result.stdout.strip()
-
-            # Try to extract just the number
-            match = re.search(r"\b(\d+)\b", output)
-            if match:
-                return int(match.group(1))
+        if result.returncode == 0:
+            # Check stdout first, then stderr if stdout is empty
+            # golang-migrate version command outputs to stderr
+            output = (result.stdout or "").strip()
+            if not output and result.stderr:
+                output = result.stderr.strip()
+            if output:
+                # Parse version from output
+                # Expected formats:
+                # - "1" (just version number)
+                # - "version: 1"
+                # - "1 (dirty)"
+                # - "version: 1 (dirty)"
+                match = re.search(r"\b(\d+)\b", output)
+                if match:
+                    return int(match.group(1))
 
         return None
 
@@ -224,16 +227,20 @@ class MigrateWrapper:
         version = None
         dirty = False
 
-        if result.returncode == 0 and result.stdout:
-            output = result.stdout.strip()
+        if result.returncode == 0:
+            # Check stdout first, then stderr if stdout is empty
+            # golang-migrate version command outputs to stderr
+            output = (result.stdout or "").strip()
+            if not output and result.stderr:
+                output = result.stderr.strip()
+            if output:
+                # Extract version
+                match = re.search(r"\b(\d+)\b", output)
+                if match:
+                    version = int(match.group(1))
 
-            # Extract version
-            match = re.search(r"\b(\d+)\b", output)
-            if match:
-                version = int(match.group(1))
-
-            # Check if dirty
-            dirty = "dirty" in output.lower()
+                # Check if dirty
+                dirty = "dirty" in output.lower()
 
         return DatabaseInfo(version=version, dirty=dirty)
 

@@ -11,6 +11,7 @@
 
 -e file:.
 black==25.1.0
+build==1.2.2.post1
 click==8.2.1
     # via black
 coverage==7.9.1
@@ -28,6 +29,7 @@ mypy-extensions==1.1.0
     # via mypy
 packaging==25.0
     # via black
+    # via build
     # via pytest
 pathspec==0.12.1
     # via black
@@ -46,6 +48,8 @@ pyflakes==3.4.0
     # via flake8
 pygments==2.19.1
     # via pytest
+pyproject-hooks==1.2.0
+    # via build
 pytest==8.4.1
     # via pytest-asyncio
     # via pytest-cov
