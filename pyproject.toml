@@ -88,6 +88,10 @@ tmp_path_retention_policy = "none"
 line-length = 88
 target-version = ['py312']
 
+[tool.flake8]
+max-line-length = 88
+extend-ignore = ["E203", "W503"]
+
 [tool.mypy]
 python_version = "3.12"
 warn_return_any = true

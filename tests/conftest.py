@@ -1,13 +1,15 @@
 """
 Pytest configuration for migrate-wrapper tests
 """
+
 import pytest
 
 
 def pytest_configure(config):
     """Register custom markers"""
     config.addinivalue_line(
-        "markers", "requires_pglite: marks test as requiring PGlite for PostgreSQL testing"
+        "markers",
+        "requires_pglite: marks test as requiring PGlite for PostgreSQL testing",
     )
 
 

@@ -1,4 +1,5 @@
 """Command execution for migrate CLI"""
+
 import subprocess
 from typing import List, Optional
 import shutil
@@ -9,10 +10,11 @@ from .exceptions import MigrateNotFoundError
 
 class MigrateCommand:
     """Base class for migrate CLI command execution"""
+
     def __init__(self, config: MigrateConfig):
         self.config = config
         self._check_migrate_command()
-        
+
     def _check_migrate_command(self) -> None:
         """Check if migrate command is available"""
         if not shutil.which(self.config.command_path):
@@ -20,24 +22,23 @@ class MigrateCommand:
                 f"migrate command not found at: {self.config.command_path}. "
                 "Please install golang-migrate/migrate first."
             )
-        
+
     def _build_base_args(self) -> List[str]:
         """Build base command arguments"""
         return [
             self.config.command_path,
-            "-database", self.config.database_url,
-            "-path", str(self.config.migrations_path)
+            "-database",
+            self.config.database_url,
+            "-path",
+            str(self.config.migrations_path),
         ]
-    
+
     def execute(self, args: List[str]) -> subprocess.CompletedProcess:
         """Execute migrate command"""
         return subprocess.run(
-            args,
-            capture_output=True,
-            text=True,
-            check=False
+            args, capture_output=True, text=True, check=False
         )
-    
+
     def parse_error(self, stderr: str) -> Optional[str]:
         """Parse error message from stderr"""
         if "dirty database" in stderr.lower():
