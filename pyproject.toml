@@ -74,7 +74,7 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --tb=short -n auto"
+addopts = "-v --tb=short -n auto --cov=src/migrate_wrapper --cov-report=term-missing"
 markers = [
     "requires_pglite: marks tests as requiring PGlite (PostgreSQL)",
 ]
