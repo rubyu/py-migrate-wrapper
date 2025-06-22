@@ -24,6 +24,4 @@ class MigrateConfig:
         if not self.database_url:
             raise ValueError("Database URL is required")
         if not self.migrations_path.exists():
-            raise ValueError(
-                f"Migrations path does not exist: {self.migrations_path}"
-            )
+            raise ValueError(f"Migrations path does not exist: {self.migrations_path}")

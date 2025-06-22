@@ -78,9 +78,7 @@ class MigrateWrapper:
             is_dirty = "dirty" in result.stderr.lower()
 
             if is_dirty:
-                raise MigrateDirtyError(
-                    error_msg or "Database is in dirty state"
-                )
+                raise MigrateDirtyError(error_msg or "Database is in dirty state")
 
             return MigrationResult(
                 success=False,
@@ -113,9 +111,7 @@ class MigrateWrapper:
             is_dirty = "dirty" in result.stderr.lower()
 
             if is_dirty:
-                raise MigrateDirtyError(
-                    error_msg or "Database is in dirty state"
-                )
+                raise MigrateDirtyError(error_msg or "Database is in dirty state")
 
             return MigrationResult(
                 success=False,
@@ -142,9 +138,7 @@ class MigrateWrapper:
             is_dirty = "dirty" in result.stderr.lower()
 
             if is_dirty:
-                raise MigrateDirtyError(
-                    error_msg or "Database is in dirty state"
-                )
+                raise MigrateDirtyError(error_msg or "Database is in dirty state")
 
             return MigrationResult(
                 success=False,
@@ -171,9 +165,7 @@ class MigrateWrapper:
             return MigrationResult(
                 success=False,
                 version=self.version(),
-                message=(
-                    self.command.parse_error(result.stderr) or "Force failed"
-                ),
+                message=(self.command.parse_error(result.stderr) or "Force failed"),
             )
 
     def drop(self, force: bool = False) -> MigrationResult:
@@ -196,9 +188,7 @@ class MigrateWrapper:
             return MigrationResult(
                 success=False,
                 version=self.version(),
-                message=(
-                    self.command.parse_error(result.stderr) or "Drop failed"
-                ),
+                message=(self.command.parse_error(result.stderr) or "Drop failed"),
             )
 
     def version(self) -> Optional[int]:
@@ -258,8 +248,7 @@ class MigrateWrapper:
         missing_down = [m for m in migrations if not m.has_down_file()]
 
         missing_down_files = [
-            MissingDownFile(version=m.version, name=m.name)
-            for m in missing_down
+            MissingDownFile(version=m.version, name=m.name) for m in missing_down
         ]
 
         return ValidationResult(

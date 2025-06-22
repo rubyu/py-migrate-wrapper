@@ -35,9 +35,7 @@ class MigrateCommand:
 
     def execute(self, args: List[str]) -> subprocess.CompletedProcess:
         """Execute migrate command"""
-        return subprocess.run(
-            args, capture_output=True, text=True, check=False
-        )
+        return subprocess.run(args, capture_output=True, text=True, check=False)
 
     def parse_error(self, stderr: str) -> Optional[str]:
         """Parse error message from stderr"""
