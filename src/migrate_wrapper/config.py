@@ -11,12 +11,10 @@ class MigrateConfig:
         self,
         database_url: str,
         migrations_path: Union[str, Path],
-        table_name: str = "schema_migrations",
         command_path: str = "migrate",
     ):
         self.database_url = database_url
         self.migrations_path = Path(migrations_path)
-        self.table_name = table_name
         self.command_path = command_path
 
     def validate(self) -> None:
