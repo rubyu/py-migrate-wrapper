@@ -112,7 +112,6 @@ All databases supported by [golang-migrate/migrate](https://github.com/golang-mi
 config = MigrateConfig(
     database_url="postgres://user:pass@localhost/dbname",  # Required
     migrations_path="./migrations",                        # Required
-    table_name="schema_migrations",                       # Optional (default)
     command_path="migrate"                                # Optional (default)
 )
 ```
@@ -137,9 +136,14 @@ This project uses rye for dependency management.
 ### Setup Development Environment
 
 ```bash
-# Install dependencies and setup PGlite
+# Install dependencies and setup PostgreSQL with Docker
 make setup
 ```
+
+This will:
+- Install Python dependencies with rye
+- Download and install the migrate CLI tool
+- Start PostgreSQL using Docker Compose
 
 ### Running Tests
 
@@ -156,25 +160,28 @@ make test-sqlite
 # Run SQLite tests in parallel
 make test-sqlite-parallel
 
-# Run only PostgreSQL tests (requires PGlite)
+# Run only PostgreSQL tests (requires Docker)
 make test-postgres
 
 # Run PostgreSQL tests in parallel
 make test-postgres-parallel
 ```
 
-### PostgreSQL Tests with PGlite
+### PostgreSQL Tests with Docker
 
-PostgreSQL tests use [PGlite Socket Server](https://pglite.dev/docs/pglite-socket#cli-usage) which is installed locally in the project:
+PostgreSQL tests use Docker Compose to run a real PostgreSQL instance:
 
 ```bash
-# Setup is done automatically with:
-make setup
+# Start PostgreSQL manually (optional - done automatically in tests)
+docker compose up -d postgres
+
+# Or use the make target
+make setup-postgres
 ```
 
-The tests will automatically use the local PGlite installation from `pglite-server/node_modules`.
+The tests will automatically start PostgreSQL if it's not running and wait for it to be ready.
 
-**Note**: PostgreSQL tests will fail if PGlite Socket Server is not installed. This is intentional to ensure consistent test environments.
+**Note**: PostgreSQL tests require Docker to be installed and running.
 
 ### Test Structure
 

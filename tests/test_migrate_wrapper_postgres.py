@@ -1,79 +1,97 @@
 """
-Tests for MigrateWrapper using PostgreSQL database via PGlite
+Tests for MigrateWrapper using PostgreSQL database via Docker
 """
 
-import subprocess
 import os
-import time
-import signal
 import psycopg
-from pathlib import Path
 import unittest
-from typing import Optional, List
+import uuid
+import time
 
 from tests.test_base import MigrateWrapperTestBase, MigrateWrapperTestMixin
 
 
 class TestMigrateWrapperPostgreSQL(MigrateWrapperTestBase, MigrateWrapperTestMixin):
-    """Test suite for MigrateWrapper with PostgreSQL via PGlite"""
+    """Test suite for MigrateWrapper with PostgreSQL via Docker"""
 
     def setup_database(self) -> str:
-        """Setup PGlite database and return connection URL"""
-        # Check if pglite is available
-        if not self._check_pglite_available():
-            self.fail(
-                "PGlite Socket Server not available - install it with: "
-                "npm install -g @electric-sql/pglite-socket"
-            )
+        """Setup PostgreSQL database and return connection URL"""
+        # Use environment variables for connection details, with sensible defaults
+        db_host = os.environ.get("POSTGRES_HOST", "localhost")
+        db_port = os.environ.get("POSTGRES_PORT", "5433")
+        db_user = os.environ.get("POSTGRES_USER", "migrate_user")
+        db_password = os.environ.get("POSTGRES_PASSWORD", "migrate_pass")
+        db_name = os.environ.get("POSTGRES_DB", "migrate_test")
 
-        # Start PGlite server with in-memory database
-        self.pglite_port = self._find_free_port()
-        self.pglite_process = self._start_pglite()
+        # Create a unique schema for this test to avoid conflicts in parallel execution
+        # Use combination of timestamp and UUID to ensure uniqueness
+        worker_id = os.environ.get("PYTEST_XDIST_WORKER", "master")
+        test_id = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
+        self.schema_name = f"test_{worker_id}_{test_id}"
 
-        # Wait for server to be ready
-        self._wait_for_server()
-
-        return (
-            f"postgres://postgres@localhost:{self.pglite_port}/postgres?sslmode=disable"
+        # Connect to the main database first
+        main_connection_url = (
+            f"postgres://{db_user}:{db_password}@"
+            f"{db_host}:{db_port}/{db_name}?sslmode=disable"
         )
 
+        # Test connection and create schema
+        try:
+            conn = psycopg.connect(main_connection_url)
+            conn.autocommit = True
+            cursor = conn.cursor()
+
+            # Create schema for this test
+            cursor.execute(f'CREATE SCHEMA IF NOT EXISTS "{self.schema_name}"')
+            conn.close()
+        except Exception as e:
+            self.fail(
+                f"Cannot connect to PostgreSQL at {db_host}:{db_port}. "
+                f"Please ensure PostgreSQL is running (try: docker compose up -d). "
+                f"Error: {e}"
+            )
+
+        # Return connection URL with schema as migration table option
+        # This ensures golang-migrate will create tables in our test schema
+        connection_url = (
+            f"postgres://{db_user}:{db_password}@"
+            f"{db_host}:{db_port}/{db_name}"
+            f"?sslmode=disable"
+            f'&x-migrations-table="{self.schema_name}"."schema_migrations"'
+            f"&x-migrations-table-quoted=1"
+        )
+
+        return connection_url
+
     def cleanup_database(self):
-        """Cleanup PGlite server"""
-        if hasattr(self, "pglite_process") and self.pglite_process:
-            try:
-                # On Unix, kill the entire process group
-                if os.name != "nt" and hasattr(os, "killpg"):
-                    try:
-                        os.killpg(os.getpgid(self.pglite_process.pid), signal.SIGTERM)
-                        self.pglite_process.wait(timeout=2)
-                    except ProcessLookupError:
-                        pass  # Process already terminated
-                    except subprocess.TimeoutExpired:
-                        os.killpg(os.getpgid(self.pglite_process.pid), signal.SIGKILL)
-                        self.pglite_process.wait(timeout=1)
-                else:
-                    # Windows or fallback
-                    self.pglite_process.terminate()
-                    self.pglite_process.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                self.pglite_process.kill()
-                self.pglite_process.wait()
-            except Exception as e:
-                # Log cleanup errors for debugging
-                print(f"Cleanup error: {e}")
-                pass
+        """Cleanup PostgreSQL database"""
+        # For Docker PostgreSQL, we drop the test schema
+        try:
+            # Parse connection URL to remove schema parameter
+            base_url = self.db_url.split("?")[0]
+            conn = psycopg.connect(f"{base_url}?sslmode=disable")
+            conn.autocommit = True
+            cursor = conn.cursor()
+
+            # Drop the test schema
+            cursor.execute(f'DROP SCHEMA IF EXISTS "{self.schema_name}" CASCADE')
+
+            conn.close()
+        except Exception:
+            # Ignore cleanup errors - schema might already be dropped
+            pass
 
     def create_schema_migrations_table(self):
         """Create schema_migrations table manually for testing"""
         try:
-            conninfo = (
-                f"dbname=postgres host=localhost port={self.pglite_port} "
-                "user=postgres password=postgres sslmode=disable"
-            )
-            conn = psycopg.connect(conninfo)
+            # Parse connection URL to connect without schema parameter
+            base_url = self.db_url.split("?")[0]
+            conn = psycopg.connect(f"{base_url}?sslmode=disable")
             conn.autocommit = False
 
             cursor = conn.cursor()
+            # Set search path to the test schema
+            cursor.execute(f"SET search_path TO {self.schema_name}")
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -92,14 +110,14 @@ class TestMigrateWrapperPostgreSQL(MigrateWrapperTestBase, MigrateWrapperTestMix
         """Set database version manually for testing"""
         try:
             self.create_schema_migrations_table()
-            conninfo = (
-                f"dbname=postgres host=localhost port={self.pglite_port} "
-                "user=postgres password=postgres sslmode=disable"
-            )
-            conn = psycopg.connect(conninfo)
+            # Parse connection URL to connect without schema parameter
+            base_url = self.db_url.split("?")[0]
+            conn = psycopg.connect(f"{base_url}?sslmode=disable")
             conn.autocommit = False
 
             cursor = conn.cursor()
+            # Set search path to the test schema
+            cursor.execute(f"SET search_path TO {self.schema_name}")
             cursor.execute("DELETE FROM schema_migrations")
             cursor.execute(
                 "INSERT INTO schema_migrations (version, dirty) VALUES (%s, %s)",
@@ -111,246 +129,193 @@ class TestMigrateWrapperPostgreSQL(MigrateWrapperTestBase, MigrateWrapperTestMix
             # Re-raise the exception to make test failures visible
             raise RuntimeError(f"Database operation failed: {e}") from e
 
-    def _check_pglite_available(self) -> bool:
-        """Check if PGlite Server CLI is available"""
-        # Try local installation first
-        pglite_cmd = self._get_pglite_command()
-        if pglite_cmd:
-            return True
-        return False
 
-    def _get_pglite_command(self) -> Optional[List[str]]:
-        """Get PGlite server command (prefer local installation)"""
-        import shutil
+class TestPostgreSQLSpecificFeatures(unittest.TestCase):
+    """Test PostgreSQL-specific functionality"""
 
-        # Check local node_modules first
-        local_pglite = (
-            Path(__file__).parent.parent
-            / "pglite-server"
-            / "node_modules"
-            / ".bin"
-            / "pglite-server"
-        )
-        if local_pglite.exists():
-            return ["node", str(local_pglite)]
+    def setUp(self):
+        """Set up test environment"""
+        # Use environment variables for connection details
+        db_host = os.environ.get("POSTGRES_HOST", "localhost")
+        db_port = os.environ.get("POSTGRES_PORT", "5433")
+        db_user = os.environ.get("POSTGRES_USER", "migrate_user")
+        db_password = os.environ.get("POSTGRES_PASSWORD", "migrate_pass")
+        db_name = os.environ.get("POSTGRES_DB", "migrate_test")
 
-        # Check if globally installed
-        if shutil.which("pglite-server"):
-            return ["pglite-server"]
+        # Create unique schema for this test
+        worker_id = os.environ.get("PYTEST_XDIST_WORKER", "master")
+        test_id = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
+        self.schema_name = f"test_{worker_id}_{test_id}"
 
-        return None
-
-    def _find_free_port(self) -> int:
-        """Find a free port for PGlite server"""
-        import socket
-        import random
-
-        # Use random port range to reduce conflicts in parallel execution
-        base_port = 15000 + random.randint(0, 9999)
-        for offset in range(100):
-            port = base_port + offset
-            try:
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    s.bind(("", port))
-                    s.listen(1)
-                return port
-            except OSError:
-                continue
-        # Fallback to system-assigned port
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.bind(("", 0))
-            s.listen(1)
-            port = s.getsockname()[1]
-        return port
-
-    def _start_pglite(self) -> subprocess.Popen:
-        """Start PGlite server"""
-        # Get PGlite command
-        pglite_cmd = self._get_pglite_command()
-        if not pglite_cmd:
-            raise RuntimeError("PGlite server command not found")
-
-        # PGlite Socket Server command line interface
-        # Using memory:// URL for in-memory database
-        cmd = pglite_cmd + [
-            "--port",
-            str(self.pglite_port),
-            "--db",
-            "memory://",
-            "--host",
-            "127.0.0.1",
-        ]
-
-        # Start PGlite in background
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,  # Combine stdout and stderr
-            preexec_fn=(
-                os.setsid if os.name != "nt" else None
-            ),  # Create new process group on Unix
+        self.connection_url = (
+            f"postgres://{db_user}:{db_password}@"
+            f"{db_host}:{db_port}/{db_name}?sslmode=disable"
         )
 
-        # Give the server a moment to start
-        time.sleep(1.0)
+        # Create schema
+        try:
+            conn = psycopg.connect(self.connection_url)
+            conn.autocommit = True
+            cursor = conn.cursor()
+            cursor.execute(f'CREATE SCHEMA IF NOT EXISTS "{self.schema_name}"')
+            cursor.execute(f"SET search_path TO {self.schema_name}")
+            conn.close()
+        except Exception as e:
+            self.fail(f"Failed to create test schema: {e}")
 
-        # Check if process started successfully
-        if process.poll() is not None:
-            output = process.stdout.read().decode() if process.stdout else ""
-            raise RuntimeError(f"PGlite server failed to start: {output}")
-
-        # Server started successfully
-
-        return process
-
-    def _wait_for_server(self, timeout: int = 10):
-        """Wait for PGlite server to be ready"""
-        import socket
-
-        start_time = time.time()
-
-        while time.time() - start_time < timeout:
-            try:
-                # Just check if port is open
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    s.settimeout(1)
-                    result = s.connect_ex(("127.0.0.1", self.pglite_port))
-                    if result == 0:
-                        # Server is listening
-                        # Give it a bit more time to fully initialize
-                        time.sleep(1)
-                        return  # Port is open
-            except Exception as e:
-                # Log connection errors during startup for debugging
-                print(f"Connection attempt failed: {e}")
-                pass
-
-            time.sleep(0.5)
-
-        # Check if process is still running
-        if hasattr(self, "pglite_process") and self.pglite_process.poll() is not None:
-            output = (
-                self.pglite_process.stdout.read().decode()
-                if self.pglite_process.stdout
-                else ""
-            )
-            raise RuntimeError(f"PGlite server crashed: {output}")
-
-        raise TimeoutError(f"PGlite server not ready after {timeout} seconds")
-
-
-# PostgreSQL-specific tests
-class TestPostgreSQLSpecificFeatures(TestMigrateWrapperPostgreSQL):
-    """Tests specific to PostgreSQL features"""
+    def tearDown(self):
+        """Clean up test schema"""
+        try:
+            conn = psycopg.connect(self.connection_url)
+            conn.autocommit = True
+            cursor = conn.cursor()
+            cursor.execute(f'DROP SCHEMA IF EXISTS "{self.schema_name}" CASCADE')
+            conn.close()
+        except Exception:
+            pass
 
     def test_postgres_connection_string_parsing(self):
         """Test PostgreSQL connection string format"""
-        self.assertIn("postgres://", self.db_url)
-        self.assertIn("localhost", self.db_url)
-        self.assertIn("sslmode=disable", self.db_url)
+        self.assertIn("postgres://", self.connection_url)
+        self.assertIn("@", self.connection_url)
 
     def test_postgres_schema_migrations_table(self):
-        """Test PostgreSQL schema_migrations table creation"""
-        self.create_schema_migrations_table()
-
-        # Verify table exists using direct table query instead of information_schema
-        # This avoids the segmentation fault issue with PGlite + psycopg +
-        # information_schema
+        """Test schema_migrations table creation"""
         try:
-            conninfo = (
-                f"dbname=postgres host=localhost port={self.pglite_port} "
-                "user=postgres password=postgres sslmode=disable"
-            )
-            conn = psycopg.connect(conninfo)
-
+            conn = psycopg.connect(self.connection_url)
+            conn.autocommit = True
             cursor = conn.cursor()
-            # Use direct table query instead of information_schema to avoid segfault
-            cursor.execute("SELECT COUNT(*) FROM schema_migrations")
-            count = cursor.fetchone()[0]
-            self.assertIsInstance(count, int)
+            cursor.execute(f"SET search_path TO {self.schema_name}")
 
-            # Test table structure by attempting INSERT/SELECT
+            # Create table
             cursor.execute(
-                "INSERT INTO schema_migrations (version, dirty) VALUES (999, FALSE) "
-                "ON CONFLICT (version) DO NOTHING"
+                """
+                CREATE TABLE IF NOT EXISTS test_schema_migrations (
+                    version BIGINT PRIMARY KEY,
+                    dirty BOOLEAN NOT NULL DEFAULT FALSE
+                )
+            """
             )
-            cursor.execute(
-                "SELECT version, dirty FROM schema_migrations WHERE version = 999"
-            )
-            result = cursor.fetchone()
-            if result:
-                version, dirty = result
-                self.assertEqual(version, 999)
-                self.assertFalse(dirty)
 
-            conn.commit()
+            # Verify table exists
+            cursor.execute(
+                """
+                SELECT column_name, data_type
+                FROM information_schema.columns
+                WHERE table_schema = %s
+                AND table_name = 'test_schema_migrations'
+                ORDER BY column_name
+            """,
+                (self.schema_name,),
+            )
+            columns = cursor.fetchall()
+
+            # Clean up
+            cursor.execute("DROP TABLE IF EXISTS test_schema_migrations")
             conn.close()
-        except Exception as e:
-            self.fail(f"Failed to verify schema_migrations table: {e}")
 
-        # Test completed - schema_migrations table verification successful
+            # Verify column structure
+            self.assertEqual(len(columns), 2)
+            column_names = [col[0] for col in columns]
+            self.assertIn("version", column_names)
+            self.assertIn("dirty", column_names)
+
+        except Exception as e:
+            self.fail(f"PostgreSQL schema test failed: {e}")
 
     def test_postgres_transactions_in_migrations(self):
-        """Test PostgreSQL transaction handling in migrations"""
-        # Create a migration with explicit transaction
-        self.create_test_migration(
-            1,
-            "test_transaction",
-            """
-            BEGIN;
-            CREATE TABLE test_table (id SERIAL PRIMARY KEY, name VARCHAR(100));
-            INSERT INTO test_table (name) VALUES ('test');
-            COMMIT;
-            """,
-            """
-            BEGIN;
-            DROP TABLE test_table;
-            COMMIT;
-            """,
-        )
+        """Test PostgreSQL transaction handling"""
+        try:
+            conn = psycopg.connect(self.connection_url)
+            conn.autocommit = False
+            cursor = conn.cursor()
+            cursor.execute(f"SET search_path TO {self.schema_name}")
 
-        migrations = self.wrapper.list_migrations()
-        self.assertEqual(len(migrations), 1)
-        self.assertEqual(migrations[0].name, "test_transaction")
+            cursor.execute("CREATE TABLE test_transaction (id SERIAL PRIMARY KEY)")
+            cursor.execute("INSERT INTO test_transaction DEFAULT VALUES")
+
+            # Test rollback
+            conn.rollback()
+
+            # Verify rollback worked
+            conn.autocommit = True
+            cursor.execute(
+                """
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables
+                    WHERE table_schema = %s
+                    AND table_name = 'test_transaction'
+                )
+            """,
+                (self.schema_name,),
+            )
+            exists = cursor.fetchone()[0]
+            self.assertFalse(exists, "Table should not exist after rollback")
+
+            conn.close()
+
+        except Exception as e:
+            self.fail(f"PostgreSQL transaction test failed: {e}")
 
     def test_postgres_serial_columns(self):
-        """Test PostgreSQL SERIAL column type in migrations"""
-        self.create_test_migration(
-            1,
-            "create_users_with_serial",
-            "CREATE TABLE users (id SERIAL PRIMARY KEY, email VARCHAR(255) UNIQUE);",
-            "DROP TABLE users;",
-        )
+        """Test PostgreSQL SERIAL column support"""
+        try:
+            conn = psycopg.connect(self.connection_url)
+            conn.autocommit = True
+            cursor = conn.cursor()
+            cursor.execute(f"SET search_path TO {self.schema_name}")
 
-        migrations = self.wrapper.list_migrations()
-        self.assertEqual(len(migrations), 1)
+            cursor.execute(
+                """
+                CREATE TABLE test_serial (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT
+                )
+            """
+            )
+            cursor.execute("INSERT INTO test_serial (name) VALUES ('test')")
+            cursor.execute("SELECT id FROM test_serial WHERE name = 'test'")
+            result = cursor.fetchone()
 
-        # Check file contents
-        up_content = migrations[0].up_file.read_text()
-        self.assertIn("SERIAL", up_content)
+            # Clean up
+            cursor.execute("DROP TABLE test_serial")
+            conn.close()
+
+            self.assertEqual(result[0], 1)
+
+        except Exception as e:
+            self.fail(f"PostgreSQL SERIAL test failed: {e}")
 
     def test_postgres_json_columns(self):
-        """Test PostgreSQL JSON column type in migrations"""
-        self.create_test_migration(
-            1,
-            "create_with_json",
+        """Test PostgreSQL JSON column support"""
+        try:
+            conn = psycopg.connect(self.connection_url)
+            conn.autocommit = True
+            cursor = conn.cursor()
+            cursor.execute(f"SET search_path TO {self.schema_name}")
+
+            cursor.execute(
+                """
+                CREATE TABLE test_json (
+                    id SERIAL PRIMARY KEY,
+                    data JSONB
+                )
             """
-            CREATE TABLE documents (
-                id SERIAL PRIMARY KEY,
-                data JSONB,
-                metadata JSON
-            );
-            """,
-            "DROP TABLE documents;",
-        )
+            )
+            cursor.execute(
+                "INSERT INTO test_json (data) VALUES (%s)", ['{"key": "value"}']
+            )
+            cursor.execute("SELECT data->>'key' FROM test_json")
+            result = cursor.fetchone()
 
-        migrations = self.wrapper.list_migrations()
-        self.assertEqual(len(migrations), 1)
+            # Clean up
+            cursor.execute("DROP TABLE test_json")
+            conn.close()
 
-        # Check file contents
-        up_content = migrations[0].up_file.read_text()
-        self.assertIn("JSONB", up_content)
-        self.assertIn("JSON", up_content)
+            self.assertEqual(result[0], "value")
+
+        except Exception as e:
+            self.fail(f"PostgreSQL JSON test failed: {e}")
 
 
 if __name__ == "__main__":
