@@ -1,10 +1,11 @@
-.PHONY: help setup install test test-sqlite test-postgres test-parallel lint format clean setup-migrate
+.PHONY: help setup install test test-sqlite test-postgres test-parallel lint format clean setup-migrate setup-postgres
 
 help:
 	@echo "Available commands:"
-	@echo "  make setup         - Setup development environment including PGlite and migrate"
+	@echo "  make setup         - Setup development environment including PostgreSQL and migrate"
 	@echo "  make install       - Install Python dependencies"
 	@echo "  make setup-migrate - Download and install migrate CLI tool"
+	@echo "  make setup-postgres - Start PostgreSQL with Docker Compose"
 	@echo "  make test          - Run all tests"
 	@echo "  make test-parallel - Run all tests in parallel"
 	@echo "  make test-sqlite   - Run SQLite tests only"
@@ -13,13 +14,15 @@ help:
 	@echo "  make format        - Format code with black"
 	@echo "  make clean         - Clean up generated files"
 
-setup: install setup-migrate setup-pglite
+setup: install setup-migrate setup-postgres
 	@echo "Development environment setup complete!"
 
-setup-pglite:
-	@echo "Setting up PGlite..."
-	@cd pglite-server && npm install
-	@echo "PGlite setup complete!"
+setup-postgres:
+	@echo "Setting up PostgreSQL with Docker..."
+	@docker compose up -d postgres
+	@echo "Waiting for PostgreSQL to be ready..."
+	@timeout 30 sh -c 'until docker compose exec postgres pg_isready -U migrate_user -d migrate_test; do sleep 1; done'
+	@echo "PostgreSQL setup complete!"
 
 install:
 	@echo "Installing Python dependencies..."
@@ -64,11 +67,15 @@ test-sqlite-parallel:
 
 test-postgres:
 	@echo "Running PostgreSQL tests..."
-	@rye run pytest tests/test_migrate_wrapper_postgres.py -v
+	@docker compose up -d postgres
+	@timeout 30 sh -c 'until docker compose exec postgres pg_isready -U migrate_user -d migrate_test; do sleep 1; done'
+	@POSTGRES_HOST=localhost POSTGRES_PORT=5433 POSTGRES_USER=migrate_user POSTGRES_PASSWORD=migrate_pass POSTGRES_DB=migrate_test rye run pytest tests/test_migrate_wrapper_postgres.py -v
 
 test-postgres-parallel:
 	@echo "Running PostgreSQL tests in parallel..."
-	@rye run pytest tests/test_migrate_wrapper_postgres.py -n auto -v
+	@docker compose up -d postgres
+	@timeout 30 sh -c 'until docker compose exec postgres pg_isready -U migrate_user -d migrate_test; do sleep 1; done'
+	@POSTGRES_HOST=localhost POSTGRES_PORT=5433 POSTGRES_USER=migrate_user POSTGRES_PASSWORD=migrate_pass POSTGRES_DB=migrate_test rye run pytest tests/test_migrate_wrapper_postgres.py -n auto -v
 
 lint:
 	@echo "Running linter..."
@@ -86,3 +93,11 @@ clean:
 	@find . -type f -name "*.pyc" -delete
 	@find . -type f -name ".coverage" -delete
 	@rm -f bin/migrate
+	@docker compose down -v
+	@echo "Stopped Docker services and removed volumes"
+
+check-all: format lint test ## Run formatting, linting, and tests
+	@echo "All checks completed successfully!"
+
+pre-commit: check-all ## Run all pre-commit checks (format, lint, test)
+	@echo "Pre-commit checks completed!"

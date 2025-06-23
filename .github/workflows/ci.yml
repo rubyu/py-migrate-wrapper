@@ -13,6 +13,21 @@ jobs:
       matrix:
         python-version: ["3.12"]
 
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: migrate_test
+          POSTGRES_USER: migrate_user
+          POSTGRES_PASSWORD: migrate_pass
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
     steps:
     - uses: actions/checkout@v4
 
@@ -27,11 +42,14 @@ jobs:
     - name: Setup migrate CLI
       run: make setup-migrate
 
-    - name: Setup PGlite
-      run: make setup-pglite
-
     - name: Run tests with coverage
       run: rye run pytest tests/ --cov=src/migrate_wrapper --cov-report=term-missing --cov-report=html
+      env:
+        POSTGRES_HOST: localhost
+        POSTGRES_PORT: 5432
+        POSTGRES_USER: migrate_user
+        POSTGRES_PASSWORD: migrate_pass
+        POSTGRES_DB: migrate_test
 
   lint:
     runs-on: ubuntu-latest
